@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>MCP Client</title>
+  <link rel="stylesheet" href="./style.css">
+</head>
+<body>
+  <div class="app">
+    <header>
+      <h1>MCP Client</h1>
+      <div class="server-section">
+        <button id="selectServer">选择服务器脚本</button>
+        <span id="serverStatus">正在初始化AI...</span>
+      </div>
+    </header>
+    
+    <main>
+      <div class="chat-container">
+        <div class="messages" id="messages">
+          <div class="welcome-message">
+            <h2>欢迎使用MCP Client</h2>
+            <p>您可以通过以下两种方式使用本应用：</p>
+            <p>1. <b>直接对话模式</b>：等待AI服务初始化完成后直接开始对话</p>
+            <p>2. <b>工具增强模式</b>：选择并连接服务器脚本（.js 或 .py）使用MCP工具能力</p>
+          </div>
+        </div>
+        
+        <div class="input-area">
+          <textarea id="messageInput" placeholder="等待AI服务初始化..." disabled></textarea>
+          <button id="sendBtn" disabled>发送</button>
+        </div>
+      </div>
+    </main>
+    
+    <footer>
+      <p>MCP Client v1.0.0</p>
+    </footer>
+  </div>
+
+  <script src="./renderer.js"></script>
+</body>
+</html> 

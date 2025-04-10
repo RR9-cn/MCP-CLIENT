@@ -1,0 +1,46 @@
+{
+  "name": "mcp-client-electron",
+  "version": "1.0.0",
+  "main": "build/main/main.js",
+  "scripts": {
+    "build": "tsc && tsc -p preload.tsconfig.json",
+    "start": "npm run build && electron .",
+    "dev": "concurrently \"tsc -w\" \"tsc -w -p preload.tsconfig.json\" \"wait-on build/main/main.js && electron .\"",
+    "pack": "electron-builder --dir",
+    "dist": "electron-builder"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "module",
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.36.3",
+    "@modelcontextprotocol/sdk": "^1.5.0",
+    "axios": "^1.8.4",
+    "dotenv": "^16.4.7"
+  },
+  "devDependencies": {
+    "@types/node": "^22.13.4",
+    "concurrently": "^8.2.2",
+    "electron": "^35.1.4",
+    "electron-builder": "^24.13.0",
+    "typescript": "^5.7.3",
+    "wait-on": "^7.2.0"
+  },
+  "engines": {
+    "node": ">=16.0.0"
+  },
+  "build": {
+    "appId": "com.mcpclient.app",
+    "productName": "MCP Client",
+    "directories": {
+      "output": "dist"
+    },
+    "files": [
+      "build/**/*",
+      "public/**/*",
+      "node_modules/**/*",
+      "package.json"
+    ]
+  }
+}
