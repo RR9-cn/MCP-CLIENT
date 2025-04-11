@@ -186,10 +186,14 @@ ipcMain.handle("send-message-with-agent", async (event, message) => {
 
     console.log("使用Agent模式处理消息:", message);
     const response = await mcpClient.processQueryWithAgent(message);
-    return { success: true, message: response };
+    return { success: true, message: response, mode: "agent" };
   } catch (error: any) {
     console.error("处理Agent消息失败:", error);
-    return { success: false, message: `处理Agent消息失败: ${error.message}` };
+    return {
+      success: false,
+      message: `处理Agent消息失败: ${error.message}`,
+      mode: "agent",
+    };
   }
 });
 

@@ -167,12 +167,20 @@ export class MCPClient {
     try {
       console.log("使用Agent模式处理查询:", query);
 
+      // 存储工具调用过程的日志
+      const toolCallLogs: string[] = [];
+
       // 使用AI服务的Agent循环处理查询
       const result = await this.aiService.runAgentLoop(
         query,
         this.tools,
         async (name, args) => {
           console.log(`Agent调用工具: ${name}，参数:`, args);
+
+          // 记录工具调用信息
+          toolCallLogs.push(
+            `[使用工具: ${name}] 参数: ${JSON.stringify(args)}`
+          );
 
           // 执行MCP工具调用
           try {
@@ -182,16 +190,31 @@ export class MCPClient {
             });
 
             console.log(`工具执行结果:`, toolResult);
+
+            // 记录工具调用结果
+            toolCallLogs.push(
+              `[工具结果] ${
+                typeof toolResult === "string"
+                  ? toolResult
+                  : JSON.stringify(toolResult)
+              }`
+            );
+
             return toolResult;
           } catch (error: any) {
             console.error(`工具${name}执行失败:`, error);
+
+            // 记录工具调用失败
+            toolCallLogs.push(`[工具执行失败] ${error.message || "未知错误"}`);
+
             throw error;
           }
         },
         5 // 最多5轮迭代
       );
 
-      return result;
+      // 将工具调用日志和最终结果组合返回
+      return toolCallLogs.join("\n") + "\n\n" + result;
     } catch (error: any) {
       console.error("Agent处理查询失败:", error);
       return `处理查询时出错: ${error.message || "未知错误"}`;
