@@ -24,6 +24,7 @@ if (!DEEPSEEK_API_KEY) {
 
 let mainWindow: BrowserWindow | null = null;
 let mcpClient: MCPClient | null = null;
+let isAgentMode: boolean = false;
 
 function createWindow() {
   // 创建浏览器窗口
@@ -173,6 +174,66 @@ ipcMain.handle("send-message", async (event, message) => {
   } catch (error: any) {
     console.error("处理消息失败:", error);
     return { success: false, message: `处理消息失败: ${error.message}` };
+  }
+});
+
+// 处理使用Agent模式发送消息到AI
+ipcMain.handle("send-message-with-agent", async (event, message) => {
+  try {
+    if (!mcpClient) {
+      return { success: false, message: "MCP客户端未初始化" };
+    }
+
+    console.log("使用Agent模式处理消息:", message);
+    const response = await mcpClient.processQueryWithAgent(message);
+    return { success: true, message: response };
+  } catch (error: any) {
+    console.error("处理Agent消息失败:", error);
+    return { success: false, message: `处理Agent消息失败: ${error.message}` };
+  }
+});
+
+// 获取当前的Agent模式状态
+ipcMain.handle("get-agent-mode", () => {
+  return isAgentMode;
+});
+
+// 设置Agent模式状态
+ipcMain.handle("set-agent-mode", (event, mode: boolean) => {
+  console.log(`设置AI模式: ${mode ? "Agent模式" : "普通模式"}`);
+  isAgentMode = mode;
+  return isAgentMode;
+});
+
+// 智能发送消息（根据当前模式自动选择）
+ipcMain.handle("smart-send-message", async (event, message) => {
+  try {
+    if (!mcpClient) {
+      return { success: false, message: "MCP客户端未初始化" };
+    }
+
+    console.log(`使用${isAgentMode ? "Agent" : "普通"}模式处理消息:`, message);
+
+    // 根据当前模式选择处理方法
+    const response = isAgentMode
+      ? await mcpClient.processQueryWithAgent(message)
+      : await mcpClient.processQuery(message);
+
+    return {
+      success: true,
+      message: response,
+      mode: isAgentMode ? "agent" : "normal",
+    };
+  } catch (error: any) {
+    console.error(
+      `处理消息失败 (${isAgentMode ? "Agent模式" : "普通模式"}):`,
+      error
+    );
+    return {
+      success: false,
+      message: `处理消息失败: ${error.message}`,
+      mode: isAgentMode ? "agent" : "normal",
+    };
   }
 });
 

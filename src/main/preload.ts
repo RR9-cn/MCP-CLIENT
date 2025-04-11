@@ -12,6 +12,26 @@ contextBridge.exposeInMainWorld("mcpAPI", {
     return ipcRenderer.invoke("send-message", message);
   },
 
+  // 使用Agent模式发送消息到AI
+  sendMessageWithAgent: (message: string) => {
+    return ipcRenderer.invoke("send-message-with-agent", message);
+  },
+
+  // 获取当前AI模式（agent或普通模式）
+  getAgentMode: () => {
+    return ipcRenderer.invoke("get-agent-mode");
+  },
+
+  // 设置当前AI模式
+  setAgentMode: (isAgentMode: boolean) => {
+    return ipcRenderer.invoke("set-agent-mode", isAgentMode);
+  },
+
+  // 智能发送消息（根据当前模式自动选择）
+  smartSendMessage: (message: string) => {
+    return ipcRenderer.invoke("smart-send-message", message);
+  },
+
   // 直接与AI对话（不使用MCP工具）
   chatWithAI: (message: string) => {
     return ipcRenderer.invoke("chat-with-ai", message);

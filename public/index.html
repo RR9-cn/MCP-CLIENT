@@ -13,6 +13,13 @@
       <div class="server-section">
         <button id="selectServer">选择服务器脚本</button>
         <span id="serverStatus">正在初始化AI...</span>
+        <div class="mode-switch-container">
+          <label class="mode-switch">
+            <input type="checkbox" id="agentModeSwitch">
+            <span class="slider round"></span>
+          </label>
+          <span id="modeIndicator" class="normal-mode">普通模式</span>
+        </div>
       </div>
     </header>
     
@@ -24,6 +31,7 @@
             <p>您可以通过以下两种方式使用本应用：</p>
             <p>1. <b>直接对话模式</b>：等待AI服务初始化完成后直接开始对话</p>
             <p>2. <b>工具增强模式</b>：选择并连接服务器脚本（.js 或 .py）使用MCP工具能力</p>
+            <p>3. <b>Agent模式</b>：开启右上角的Agent开关，AI将自动执行多轮工具调用</p>
           </div>
         </div>
         

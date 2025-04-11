@@ -4,10 +4,13 @@ const serverStatus = document.getElementById('serverStatus');
 const messagesContainer = document.getElementById('messages');
 const messageInput = document.getElementById('messageInput');
 const sendBtn = document.getElementById('sendBtn');
+const agentModeSwitch = document.getElementById('agentModeSwitch');
+const modeIndicator = document.getElementById('modeIndicator');
 
 // 全局变量
 let isConnected = false;
 let isAIReady = false;
+let isAgentMode = false;
 
 // 为UI元素添加事件监听器
 selectServerBtn.addEventListener('click', selectServerScript);
@@ -18,13 +21,53 @@ messageInput.addEventListener('keypress', (e) => {
     sendMessage();
   }
 });
+if (agentModeSwitch) {
+  agentModeSwitch.addEventListener('change', toggleAgentMode);
+}
 
 // 监听AI服务就绪
 window.mcpAPI.onAIServiceReady(() => {
   isAIReady = true;
   addMessage('AI服务已准备就绪，您可以开始对话', 'system');
   updateStatus('AI已就绪，MCP未连接', false, true);
+  
+  initAgentModeState();
 });
+
+async function initAgentModeState() {
+  try {
+    isAgentMode = await window.mcpAPI.getAgentMode();
+    updateModeIndicator(isAgentMode);
+    
+    if (agentModeSwitch) {
+      agentModeSwitch.checked = isAgentMode;
+    }
+  } catch (error) {
+    console.error('获取Agent模式状态失败:', error);
+  }
+}
+
+async function toggleAgentMode() {
+  try {
+    const newMode = agentModeSwitch ? agentModeSwitch.checked : !isAgentMode;
+    isAgentMode = await window.mcpAPI.setAgentMode(newMode);
+    updateModeIndicator(isAgentMode);
+    
+    addMessage(`已切换至${isAgentMode ? 'Agent模式' : '普通模式'}`, 'system');
+  } catch (error) {
+    addMessage(`切换模式失败: ${error.message}`, 'error');
+    if (agentModeSwitch) {
+      agentModeSwitch.checked = isAgentMode;
+    }
+  }
+}
+
+function updateModeIndicator(isAgent) {
+  if (modeIndicator) {
+    modeIndicator.textContent = isAgent ? 'Agent模式' : '普通模式';
+    modeIndicator.className = isAgent ? 'agent-mode' : 'normal-mode';
+  }
+}
 
 // 选择服务器脚本并连接
 async function selectServerScript() {
@@ -94,17 +137,19 @@ async function sendMessage() {
     
     // 根据连接状态选择使用MCP还是直接AI对话
     if (isConnected) {
-      // 通过MCP发送消息
-      response = await window.mcpAPI.sendMessage(message);
+      response = await window.mcpAPI.smartSendMessage(message);
       
       // 处理响应
       if (response.success) {
+        const modeTag = response.mode === 'agent' ? '[Agent模式]' : '[普通模式]';
+        addMessage(`${modeTag} 处理中...`, 'system');
+        
         // 解析响应，分离工具调用和AI回复
-        const parts = response.message.split('\n');
+        const parts = String(response.message).split('\n');
         let currentText = '';
         
         for (const part of parts) {
-          if (part.startsWith('[调用工具')) {
+          if (part.startsWith('[调用工具') || part.startsWith('[使用工具') || part.startsWith('[工具结果]')) {
             // 如果有累积的文本，先添加为AI消息
             if (currentText) {
               addMessage(currentText, 'ai');

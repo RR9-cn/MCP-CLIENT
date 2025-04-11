@@ -154,6 +154,50 @@ export class MCPClient {
     }
   }
 
+  /**
+   * 使用Agent模式处理查询
+   * @param query 用户查询
+   * @returns 处理后的结果
+   */
+  async processQueryWithAgent(query: string) {
+    if (!this.isConnected) {
+      return "请先连接到MCP服务器";
+    }
+
+    try {
+      console.log("使用Agent模式处理查询:", query);
+
+      // 使用AI服务的Agent循环处理查询
+      const result = await this.aiService.runAgentLoop(
+        query,
+        this.tools,
+        async (name, args) => {
+          console.log(`Agent调用工具: ${name}，参数:`, args);
+
+          // 执行MCP工具调用
+          try {
+            const toolResult = await this.mcp.callTool({
+              name,
+              arguments: args,
+            });
+
+            console.log(`工具执行结果:`, toolResult);
+            return toolResult;
+          } catch (error: any) {
+            console.error(`工具${name}执行失败:`, error);
+            throw error;
+          }
+        },
+        5 // 最多5轮迭代
+      );
+
+      return result;
+    } catch (error: any) {
+      console.error("Agent处理查询失败:", error);
+      return `处理查询时出错: ${error.message || "未知错误"}`;
+    }
+  }
+
   async processQuery(query: string) {
     /**
      * Process a query using DeepSeek and available tools
