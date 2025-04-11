@@ -23,8 +23,13 @@ if (!DEEPSEEK_API_KEY) {
 }
 
 let mainWindow: BrowserWindow | null = null;
-let mcpClient: MCPClient | null = null;
+// 修改为Map存储多个MCP客户端
+let mcpClients: Map<string, MCPClient> = new Map();
+// 当前活动的MCP客户端ID
+let activeMcpClientId: string | null = null;
 let isAgentMode: boolean = false;
+// AI服务实例
+let aiService: DeepSeekAIService | null = null;
 
 function createWindow() {
   // 创建浏览器窗口
@@ -75,12 +80,13 @@ app.whenReady().then(() => {
 
 // 当所有窗口都被关闭时退出，除了在macOS上
 app.on("window-all-closed", async function () {
-  // 清理MCP客户端资源
-  if (mcpClient) {
+  // 清理所有MCP客户端资源
+  for (const [id, client] of mcpClients.entries()) {
     try {
-      await mcpClient.cleanup();
+      console.log(`正在清理MCP客户端资源: ${id}`);
+      await client.cleanup();
     } catch (error: unknown) {
-      console.error("清理MCP客户端资源时发生错误:", error);
+      console.error(`清理MCP客户端资源时发生错误 (${id}):`, error);
     }
   }
 
@@ -91,8 +97,16 @@ app.on("window-all-closed", async function () {
 const initAIService = () => {
   try {
     console.log("正在初始化AI服务...");
-    const aiService = new DeepSeekAIService(DEEPSEEK_API_KEY);
-    mcpClient = new MCPClient(aiService);
+    aiService = new DeepSeekAIService(DEEPSEEK_API_KEY);
+
+    // 创建默认MCP客户端并设置为活动客户端
+    const defaultClientId = "default-client";
+    mcpClients.set(
+      defaultClientId,
+      new MCPClient(aiService, defaultClientId, "默认服务")
+    );
+    activeMcpClientId = defaultClientId;
+
     console.log("AI服务初始化成功");
 
     // 通知渲染进程AI服务已准备就绪
@@ -110,7 +124,7 @@ const initAIService = () => {
 // 处理直接与AI对话
 ipcMain.handle("chat-with-ai", async (event, message) => {
   try {
-    if (!mcpClient) {
+    if (!activeMcpClientId || !mcpClients.has(activeMcpClientId)) {
       console.log("AI服务未初始化，正在初始化...");
       const result = initAIService();
       if (!result.success) {
@@ -119,7 +133,12 @@ ipcMain.handle("chat-with-ai", async (event, message) => {
     }
 
     console.log("发送消息到AI:", message);
-    const response = await mcpClient!.chatWithAI(message);
+    const activeMcpClient = mcpClients.get(activeMcpClientId!);
+    if (!activeMcpClient) {
+      return { success: false, message: "无法找到活动的MCP客户端" };
+    }
+
+    const response = await activeMcpClient.chatWithAI(message);
     return response;
   } catch (error: any) {
     console.error("AI对话失败:", error);
@@ -127,12 +146,95 @@ ipcMain.handle("chat-with-ai", async (event, message) => {
   }
 });
 
-// 处理连接到MCP服务器
-ipcMain.handle("connect-server", async (event, serverPath) => {
+// 添加新的处理程序来获取所有服务器列表
+ipcMain.handle("get-server-list", () => {
+  const servers = [];
+  for (const [id, client] of mcpClients.entries()) {
+    servers.push({
+      id: id,
+      name: client.getServerName(),
+      path: client.getServerPath(),
+      active: id === activeMcpClientId,
+      connected: client.getConnectionStatus(),
+    });
+  }
+  return servers;
+});
+
+// 切换当前活动的服务器
+ipcMain.handle("switch-active-server", async (event, serverId) => {
+  if (!mcpClients.has(serverId)) {
+    return { success: false, message: "找不到指定的服务器" };
+  }
+
+  activeMcpClientId = serverId;
+
+  // 通知列表更新
+  notifyServerListUpdate();
+
+  return {
+    success: true,
+    message: "已切换服务器",
+    serverName: mcpClients.get(serverId)!.getServerName(),
+  };
+});
+
+// 处理添加新MCP服务器
+ipcMain.handle("add-mcp-server", async (event, serverPath, serverName) => {
+  try {
+    if (!aiService) {
+      console.log("AI服务未初始化，正在初始化...");
+      const result = initAIService();
+      if (!result.success) {
+        console.error("AI服务初始化失败:", result.message);
+        return { success: false, message: result.message };
+      }
+    }
+
+    // 生成唯一ID
+    const serverId = `mcp-${Date.now()}`;
+    const newClient = new MCPClient(
+      aiService!,
+      serverId,
+      serverName || "新服务器"
+    );
+
+    console.log(
+      `创建新服务器: ${serverPath}, 名称: ${serverName || "新服务器"}`
+    );
+
+    // 连接到服务器
+    const connectResult = await newClient.connectToServer(serverPath);
+
+    // 将新客户端添加到Map
+    mcpClients.set(serverId, newClient);
+
+    // 设置为活动客户端
+    activeMcpClientId = serverId;
+
+    console.log(`已添加新服务器，ID: ${serverId}`);
+
+    // 通知列表更新
+    notifyServerListUpdate();
+
+    return {
+      success: true,
+      serverId: serverId,
+      serverName: serverName || "新服务器",
+      tools: connectResult.tools,
+    };
+  } catch (error: any) {
+    console.error("添加MCP服务器失败:", error);
+    return { success: false, message: `添加服务器失败: ${error.message}` };
+  }
+});
+
+// 更新连接到MCP服务器的处理程序以支持多服务器
+ipcMain.handle("connect-server", async (event, serverPath, serverName) => {
   try {
     console.log(`尝试连接到服务器: ${serverPath}`);
 
-    if (!mcpClient) {
+    if (!aiService) {
       console.log("初始化AI服务...");
       const result = initAIService();
       if (!result.success) {
@@ -141,11 +243,74 @@ ipcMain.handle("connect-server", async (event, serverPath) => {
       }
     }
 
-    console.log("开始连接到MCP服务器...");
-    const connectResult = await mcpClient!.connectToServer(serverPath);
-    console.log("连接结果:", connectResult);
+    // 检查这是连接新服务器还是重连现有服务器
+    if (serverName) {
+      // 直接调用添加服务器的函数，不使用IPC事件
+      try {
+        if (!aiService) {
+          console.log("AI服务未初始化，正在初始化...");
+          const result = initAIService();
+          if (!result.success) {
+            console.error("AI服务初始化失败:", result.message);
+            return { success: false, message: result.message };
+          }
+        }
 
-    return { success: true, message: "已成功连接到MCP服务器" };
+        // 生成唯一ID
+        const serverId = `mcp-${Date.now()}`;
+        const newClient = new MCPClient(
+          aiService!,
+          serverId,
+          serverName || "新服务器"
+        );
+
+        console.log(
+          `创建新服务器: ${serverPath}, 名称: ${serverName || "新服务器"}`
+        );
+
+        // 连接到服务器
+        const connectResult = await newClient.connectToServer(serverPath);
+
+        // 将新客户端添加到Map
+        mcpClients.set(serverId, newClient);
+
+        // 设置为活动客户端
+        activeMcpClientId = serverId;
+
+        console.log(`已添加新服务器，ID: ${serverId}`);
+
+        // 通知列表更新
+        notifyServerListUpdate();
+
+        return {
+          success: true,
+          serverId: serverId,
+          serverName: serverName || "新服务器",
+          tools: connectResult.tools,
+          message: "已成功连接到MCP服务器",
+        };
+      } catch (error: any) {
+        console.error("添加MCP服务器失败:", error);
+        return { success: false, message: `添加服务器失败: ${error.message}` };
+      }
+    } else if (activeMcpClientId && mcpClients.has(activeMcpClientId)) {
+      // 使用当前活动客户端连接
+      const activeMcpClient = mcpClients.get(activeMcpClientId)!;
+
+      console.log("开始连接到MCP服务器...");
+      const connectResult = await activeMcpClient.connectToServer(serverPath);
+      console.log("连接结果:", connectResult);
+
+      return {
+        success: true,
+        message: "已成功连接到MCP服务器",
+        serverId: activeMcpClientId,
+        serverName: activeMcpClient.getServerName(),
+        tools: connectResult.tools,
+      };
+    } else {
+      return { success: false, message: "未找到可用的MCP客户端" };
+    }
   } catch (error: any) {
     console.error("连接MCP服务器失败:", error);
     let errorMessage = `连接MCP服务器失败: ${error.message}`;
@@ -162,14 +327,15 @@ ipcMain.handle("connect-server", async (event, serverPath) => {
   }
 });
 
-// 处理发送消息到AI
+// 处理发送消息到AI的其他方法也需要更新为使用activeMcpClientId
 ipcMain.handle("send-message", async (event, message) => {
   try {
-    if (!mcpClient) {
+    if (!activeMcpClientId || !mcpClients.has(activeMcpClientId)) {
       return { success: false, message: "MCP客户端未初始化" };
     }
 
-    const response = await mcpClient.processQuery(message);
+    const activeMcpClient = mcpClients.get(activeMcpClientId)!;
+    const response = await activeMcpClient.processQuery(message);
     return { success: true, message: response };
   } catch (error: any) {
     console.error("处理消息失败:", error);
@@ -180,11 +346,12 @@ ipcMain.handle("send-message", async (event, message) => {
 // 处理使用Agent模式发送消息到AI
 ipcMain.handle("send-message-with-agent", async (event, message) => {
   try {
-    if (!mcpClient) {
+    if (!activeMcpClientId || !mcpClients.has(activeMcpClientId)) {
       return { success: false, message: "MCP客户端未初始化" };
     }
 
     console.log("使用Agent模式处理消息:", message);
+    const activeMcpClient = mcpClients.get(activeMcpClientId)!;
 
     // 创建进度回调
     const progressCallback = {
@@ -219,7 +386,7 @@ ipcMain.handle("send-message-with-agent", async (event, message) => {
       },
     };
 
-    const response = await mcpClient.processQueryWithAgent(
+    const response = await activeMcpClient.processQueryWithAgent(
       message,
       progressCallback
     );
@@ -249,19 +416,19 @@ ipcMain.handle("set-agent-mode", (event, mode: boolean) => {
 // 智能发送消息（根据当前模式自动选择）
 ipcMain.handle("smart-send-message", async (event, message) => {
   try {
-    if (!mcpClient) {
+    if (!activeMcpClientId || !mcpClients.has(activeMcpClientId)) {
       return { success: false, message: "MCP客户端未初始化" };
     }
 
-    console.log(`使用${isAgentMode ? "Agent" : "普通"}模式处理消息:`, message);
-
-    // 根据当前模式选择处理方法
+    const activeMcpClient = mcpClients.get(activeMcpClientId)!;
     let response;
+
     if (isAgentMode) {
+      console.log("使用Agent模式处理消息:", message);
+
       // 创建进度回调
       const progressCallback = {
         onToolCall: (name: string, args: any) => {
-          // 发送工具调用更新通知
           if (mainWindow) {
             mainWindow.webContents.send("tool-call-update", {
               name,
@@ -271,7 +438,6 @@ ipcMain.handle("smart-send-message", async (event, message) => {
           }
         },
         onToolResult: (name: string, result: any) => {
-          // 发送工具结果更新通知
           if (mainWindow) {
             mainWindow.webContents.send("tool-result-update", {
               name,
@@ -281,7 +447,6 @@ ipcMain.handle("smart-send-message", async (event, message) => {
           }
         },
         onFinalResponse: (response: string) => {
-          // 发送最终回复通知
           if (mainWindow) {
             mainWindow.webContents.send("agent-final-response", {
               response,
@@ -291,12 +456,12 @@ ipcMain.handle("smart-send-message", async (event, message) => {
         },
       };
 
-      response = await mcpClient.processQueryWithAgent(
+      response = await activeMcpClient.processQueryWithAgent(
         message,
         progressCallback
       );
     } else {
-      response = await mcpClient.processQuery(message);
+      response = await activeMcpClient.processQuery(message);
     }
 
     return {
@@ -305,10 +470,7 @@ ipcMain.handle("smart-send-message", async (event, message) => {
       mode: isAgentMode ? "agent" : "normal",
     };
   } catch (error: any) {
-    console.error(
-      `处理消息失败 (${isAgentMode ? "Agent模式" : "普通模式"}):`,
-      error
-    );
+    console.error("处理消息失败:", error);
     return {
       success: false,
       message: `处理消息失败: ${error.message}`,
@@ -317,35 +479,113 @@ ipcMain.handle("smart-send-message", async (event, message) => {
   }
 });
 
-// 处理选择服务器脚本文件
-ipcMain.handle("select-server-script", async () => {
+// 处理选择服务器脚本
+ipcMain.handle("select-server-script", async (event) => {
   try {
-    if (!mainWindow) return { canceled: true };
-
-    const result = await dialog.showOpenDialog(mainWindow, {
+    const result = await dialog.showOpenDialog({
       properties: ["openFile"],
-      filters: [{ name: "脚本文件", extensions: ["js", "py"] }],
+      filters: [
+        { name: "脚本文件", extensions: ["py", "js"] },
+        { name: "所有文件", extensions: ["*"] },
+      ],
     });
 
-    // 规范化所选文件路径
-    if (!result.canceled && result.filePaths.length > 0) {
-      console.log(`用户选择了文件: ${result.filePaths[0]}`);
+    if (result.canceled || !result.filePaths.length) {
+      return { canceled: true };
+    }
 
-      // 检查文件是否存在
-      const fs = await import("fs");
-      if (!fs.existsSync(result.filePaths[0])) {
-        console.error(`文件不存在: ${result.filePaths[0]}`);
-        return {
-          canceled: false,
-          filePaths: result.filePaths,
-          warning: "文件可能不存在，请检查路径",
-        };
+    const filePath = result.filePaths[0];
+    const isValidExtension =
+      filePath.endsWith(".py") || filePath.endsWith(".js");
+
+    // 获取文件名作为默认服务器名称
+    const path = await import("path");
+    const serverName = path.basename(filePath, path.extname(filePath));
+
+    return {
+      canceled: false,
+      filePaths: [filePath],
+      warning: !isValidExtension
+        ? "选择的文件不是.py或.js文件，可能无法正常工作"
+        : undefined,
+      serverName,
+    };
+  } catch (error: any) {
+    console.error("选择服务器脚本失败:", error);
+    return {
+      canceled: true,
+      error: error.message,
+    };
+  }
+});
+
+// 删除服务器连接
+ipcMain.handle("remove-server", async (event, serverId) => {
+  try {
+    if (!mcpClients.has(serverId)) {
+      return { success: false, message: "找不到指定的服务器" };
+    }
+
+    // 获取要删除的客户端
+    const clientToRemove = mcpClients.get(serverId)!;
+
+    // 执行清理操作
+    try {
+      await clientToRemove.cleanup();
+    } catch (error: unknown) {
+      console.error(`清理服务器资源时发生错误 (${serverId}):`, error);
+    }
+
+    // 从Map中删除
+    mcpClients.delete(serverId);
+
+    // 如果删除的是当前活动客户端，则切换到另一个可用客户端
+    if (serverId === activeMcpClientId) {
+      // 找到第一个可用客户端
+      const iterator = mcpClients.keys();
+      const firstKey = iterator.next();
+      activeMcpClientId =
+        mcpClients.size > 0 && !firstKey.done ? firstKey.value : null;
+
+      if (activeMcpClientId) {
+        console.log(
+          `已切换到服务器: ${mcpClients
+            .get(activeMcpClientId)!
+            .getServerName()}`
+        );
+      } else {
+        console.log("没有可用的服务器，正在初始化默认服务器");
+        initAIService();
       }
     }
 
-    return result;
+    // 通知列表更新
+    notifyServerListUpdate();
+
+    return {
+      success: true,
+      message: "已删除服务器",
+      newActiveId: activeMcpClientId,
+    };
   } catch (error: any) {
-    console.error("选择服务器脚本失败:", error);
-    return { canceled: true, message: error.message };
+    console.error("删除服务器失败:", error);
+    return { success: false, message: `删除服务器失败: ${error.message}` };
   }
 });
+
+// 添加函数来广播服务器列表更新
+function notifyServerListUpdate() {
+  if (mainWindow) {
+    const servers = [];
+    for (const [id, client] of mcpClients.entries()) {
+      servers.push({
+        id: id,
+        name: client.getServerName(),
+        path: client.getServerPath(),
+        active: id === activeMcpClientId,
+        connected: client.getConnectionStatus(),
+      });
+    }
+    mainWindow.webContents.send("server-list-update", servers);
+  }
+}

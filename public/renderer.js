@@ -6,6 +6,14 @@ const messageInput = document.getElementById('messageInput');
 const sendBtn = document.getElementById('sendBtn');
 const agentModeSwitch = document.getElementById('agentModeSwitch');
 const modeIndicator = document.getElementById('modeIndicator');
+const serversContainer = document.getElementById('serversContainer') || document.createElement('div');
+
+// 如果页面上还没有serversContainer元素，创建并添加它
+if (!document.getElementById('serversContainer')) {
+  serversContainer.id = 'serversContainer';
+  serversContainer.className = 'servers-container';
+  document.querySelector('.server-section').appendChild(serversContainer);
+}
 
 // 全局变量
 let isConnected = false;
@@ -13,6 +21,8 @@ let isAIReady = false;
 let isAgentMode = false;
 // 当前处理中的消息ID，用于关联工具调用
 let currentMessageId = null;
+// 当前活动的服务器ID
+let activeServerId = null;
 
 // 为UI元素添加事件监听器
 selectServerBtn.addEventListener('click', selectServerScript);
@@ -66,6 +76,103 @@ window.mcpAPI.onAgentFinalResponse((data) => {
   addMessage(data.response, 'ai');
 });
 
+// 监听服务器列表更新
+window.mcpAPI.onServerListUpdate((servers) => {
+  updateServersList(servers);
+});
+
+// 更新服务器列表UI
+function updateServersList(servers) {
+  serversContainer.innerHTML = '';
+  
+  // 检查servers是否是有效数组
+  if (!servers || !Array.isArray(servers) || servers.length === 0) {
+    const emptyMsg = document.createElement('div');
+    emptyMsg.className = 'empty-servers';
+    emptyMsg.textContent = '没有连接的服务器';
+    serversContainer.appendChild(emptyMsg);
+    return;
+  }
+  
+  servers.forEach(server => {
+    if (!server) return; // 跳过无效服务器对象
+    
+    const serverDiv = document.createElement('div');
+    serverDiv.className = `server-item ${server.active ? 'active' : ''} ${server.connected ? 'connected' : ''}`;
+    serverDiv.dataset.id = server.id || 'unknown';
+    
+    const nameSpan = document.createElement('span');
+    nameSpan.className = 'server-name';
+    nameSpan.textContent = server.name || '未命名服务器';
+    
+    const statusDot = document.createElement('span');
+    statusDot.className = `status-dot ${server.connected ? 'connected' : 'disconnected'}`;
+    
+    const actionsDiv = document.createElement('div');
+    actionsDiv.className = 'server-actions';
+    
+    const switchBtn = document.createElement('button');
+    switchBtn.className = 'switch-server-btn';
+    switchBtn.textContent = '切换';
+    switchBtn.addEventListener('click', () => switchServer(server.id));
+    
+    const removeBtn = document.createElement('button');
+    removeBtn.className = 'remove-server-btn';
+    removeBtn.textContent = '移除';
+    removeBtn.addEventListener('click', () => removeServer(server.id));
+    
+    serverDiv.appendChild(statusDot);
+    serverDiv.appendChild(nameSpan);
+    actionsDiv.appendChild(switchBtn);
+    actionsDiv.appendChild(removeBtn);
+    serverDiv.appendChild(actionsDiv);
+    
+    serversContainer.appendChild(serverDiv);
+  });
+  
+  // 更新当前活动服务器ID
+  const activeServer = servers.find(server => server && server.active);
+  if (activeServer) {
+    activeServerId = activeServer.id;
+    // 更新连接状态
+    updateStatus(activeServer.connected ? '已连接' : '未连接', activeServer.connected, isAIReady);
+  }
+}
+
+// 切换活动服务器
+async function switchServer(serverId) {
+  try {
+    const result = await window.mcpAPI.switchActiveServer(serverId);
+    if (result.success) {
+      addMessage(`已切换到服务器: ${result.serverName || '未命名服务器'}`, 'system');
+      // 获取最新的服务器列表
+      const servers = await window.mcpAPI.getServerList();
+      updateServersList(servers);
+    } else {
+      addMessage(`切换服务器失败: ${result.message || '未知错误'}`, 'error');
+    }
+  } catch (error) {
+    addMessage(`切换服务器出错: ${error && error.message ? error.message : '未知错误'}`, 'error');
+  }
+}
+
+// 移除服务器
+async function removeServer(serverId) {
+  try {
+    const result = await window.mcpAPI.removeServer(serverId);
+    if (result.success) {
+      addMessage('已移除服务器', 'system');
+      // 获取最新的服务器列表
+      const servers = await window.mcpAPI.getServerList();
+      updateServersList(servers);
+    } else {
+      addMessage(`移除服务器失败: ${result.message || '未知错误'}`, 'error');
+    }
+  } catch (error) {
+    addMessage(`移除服务器出错: ${error && error.message ? error.message : '未知错误'}`, 'error');
+  }
+}
+
 async function initAgentModeState() {
   try {
     isAgentMode = await window.mcpAPI.getAgentMode();
@@ -87,7 +194,7 @@ async function toggleAgentMode() {
     
     addMessage(`已切换至${isAgentMode ? 'Agent模式' : '普通模式'}`, 'system');
   } catch (error) {
-    addMessage(`切换模式失败: ${error.message}`, 'error');
+    addMessage(`切换模式失败: ${error && error.message ? error.message : '未知错误'}`, 'error');
     if (agentModeSwitch) {
       agentModeSwitch.checked = isAgentMode;
     }
@@ -105,15 +212,16 @@ function updateModeIndicator(isAgent) {
 async function selectServerScript() {
   try {
     // 显示正在选择文件状态
-    updateStatus('选择文件中...', false, false);
+    updateStatus('选择文件中...', false, isAIReady);
     
     const result = await window.mcpAPI.selectServerScript();
     if (result.canceled || !result.filePaths || result.filePaths.length === 0) {
-      updateStatus('未选择文件', false, false);
+      updateStatus('未选择文件', false, isAIReady);
       return;
     }
 
     const serverPath = result.filePaths[0];
+    const serverName = result.serverName || '未命名服务器';
     
     // 显示正在处理警告
     if (result.warning) {
@@ -121,34 +229,47 @@ async function selectServerScript() {
     }
     
     // 显示连接中状态
-    updateStatus(`正在连接: ${serverPath}`, false, false);
-    addMessage(`正在连接到服务器: ${serverPath}`, 'system');
+    updateStatus(`正在连接: ${serverPath}`, false, isAIReady);
+    addMessage(`正在连接到服务器: ${serverPath} (${serverName})`, 'system');
     
-    const connectResult = await window.mcpAPI.connectServer(serverPath);
+    // 传递服务器名称参数
+    const connectResult = await window.mcpAPI.connectServer(serverPath, serverName);
     if (connectResult.success) {
       updateStatus('已连接', true, true);
-      addMessage(`已成功连接到服务器：${serverPath}`, 'system');
+      addMessage(`已成功连接到服务器: ${serverName}`, 'system');
+      
+      // 更新活动服务器ID
+      activeServerId = connectResult.serverId;
       
       // 如果有可用工具，显示它们
-      if (connectResult.tools) {
+      if (connectResult && connectResult.tools && Array.isArray(connectResult.tools)) {
         addMessage(`可用工具: ${connectResult.tools.join(', ')}`, 'system');
       }
+      
+      // 获取最新的服务器列表
+      const servers = await window.mcpAPI.getServerList();
+      updateServersList(servers);
     } else {
-      updateStatus('连接失败', false, false);
+      updateStatus('连接失败', false, isAIReady);
       
       // 处理多行错误消息
-      const errorLines = connectResult.message.split('\n');
-      addMessage(`连接失败：${errorLines[0]}`, 'error');
-      
-      // 添加额外的错误信息
-      if (errorLines.length > 1) {
-        const additionalInfo = errorLines.slice(1).join('\n');
-        addMessage(additionalInfo, 'error-details');
+      if (connectResult && connectResult.message) {
+        const errorLines = connectResult.message.split('\n');
+        addMessage(`连接失败：${errorLines[0]}`, 'error');
+        
+        // 添加额外的错误信息
+        if (errorLines.length > 1) {
+          const additionalInfo = errorLines.slice(1).join('\n');
+          addMessage(additionalInfo, 'error-details');
+        }
+      } else {
+        // 处理没有错误消息的情况
+        addMessage('连接失败：未知错误', 'error');
       }
     }
   } catch (error) {
-    updateStatus('连接失败', false, false);
-    addMessage(`错误：${error.message}`, 'error');
+    updateStatus('连接失败', false, isAIReady);
+    addMessage(`错误：${error && error.message ? error.message : '未知错误'}`, 'error');
   }
 }
 
@@ -197,20 +318,20 @@ async function sendMessage() {
       if (response.success) {
         // 在非Agent模式下，直接显示AI回复
         if (response.mode !== 'agent') {
-          addMessageToSession(sessionContainer, response.message, 'ai');
+          addMessageToSession(sessionContainer, response.message || '收到空回复', 'ai');
         }
         // Agent模式下，实时回调会处理显示
       } else {
-        addMessageToSession(sessionContainer, `处理失败：${response.message}`, 'error');
+        addMessageToSession(sessionContainer, `处理失败：${response.message || '未知错误'}`, 'error');
       }
     } else if (isAIReady) {
       // 直接与AI对话
       response = await window.mcpAPI.chatWithAI(message);
       
       if (response.success) {
-        addMessageToSession(sessionContainer, response.message, 'ai');
+        addMessageToSession(sessionContainer, response.message || '收到空回复', 'ai');
       } else {
-        addMessageToSession(sessionContainer, `AI回复失败：${response.message}`, 'error');
+        addMessageToSession(sessionContainer, `AI回复失败：${response.message || '未知错误'}`, 'error');
       }
     } else {
       addMessageToSession(sessionContainer, '请先等待AI服务就绪或连接到MCP服务器', 'error');
@@ -218,7 +339,7 @@ async function sendMessage() {
   } catch (error) {
     // 获取当前会话容器
     const currentSession = document.querySelector(`.message-session[data-message-id="${currentMessageId}"]`);
-    addMessageToSession(currentSession, `错误：${error.message}`, 'error');
+    addMessageToSession(currentSession, `错误：${error && error.message ? error.message : '未知错误'}`, 'error');
   } finally {
     // 重新启用输入
     disableInput(false);

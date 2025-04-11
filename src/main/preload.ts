@@ -3,8 +3,28 @@ const { contextBridge, ipcRenderer } = require("electron");
 // 暴露给渲染进程的API
 contextBridge.exposeInMainWorld("mcpAPI", {
   // 连接到MCP服务器
-  connectServer: (serverPath: string) => {
-    return ipcRenderer.invoke("connect-server", serverPath);
+  connectServer: (serverPath: string, serverName?: string) => {
+    return ipcRenderer.invoke("connect-server", serverPath, serverName);
+  },
+
+  // 获取服务器列表
+  getServerList: () => {
+    return ipcRenderer.invoke("get-server-list");
+  },
+
+  // 添加新的MCP服务器
+  addMcpServer: (serverPath: string, serverName: string) => {
+    return ipcRenderer.invoke("add-mcp-server", serverPath, serverName);
+  },
+
+  // 切换活动服务器
+  switchActiveServer: (serverId: string) => {
+    return ipcRenderer.invoke("switch-active-server", serverId);
+  },
+
+  // 删除服务器连接
+  removeServer: (serverId: string) => {
+    return ipcRenderer.invoke("remove-server", serverId);
   },
 
   // 发送消息到AI
@@ -64,6 +84,13 @@ contextBridge.exposeInMainWorld("mcpAPI", {
   // 监听Agent最终回复
   onAgentFinalResponse: (callback: (data: unknown) => void) => {
     ipcRenderer.on("agent-final-response", (_event: any, data: unknown) =>
+      callback(data)
+    );
+  },
+
+  // 监听服务器列表更新
+  onServerListUpdate: (callback: (data: unknown) => void) => {
+    ipcRenderer.on("server-list-update", (_event: any, data: unknown) =>
       callback(data)
     );
   },

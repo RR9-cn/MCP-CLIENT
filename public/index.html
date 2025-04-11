@@ -11,15 +11,19 @@
     <header>
       <h1>MCP Client</h1>
       <div class="server-section">
-        <button id="selectServer">选择服务器脚本</button>
-        <span id="serverStatus">正在初始化AI...</span>
-        <div class="mode-switch-container">
-          <label class="mode-switch">
-            <input type="checkbox" id="agentModeSwitch">
-            <span class="slider round"></span>
-          </label>
-          <span id="modeIndicator" class="normal-mode">普通模式</span>
+        <div class="controls">
+          <button id="selectServer">添加服务器</button>
+          <span id="serverStatus">正在初始化AI...</span>
+          <div class="mode-switch-container">
+            <label class="mode-switch">
+              <input type="checkbox" id="agentModeSwitch">
+              <span class="slider round"></span>
+            </label>
+            <span id="modeIndicator" class="normal-mode">普通模式</span>
+          </div>
         </div>
+        <div class="servers-header">连接的服务器</div>
+        <div id="serversContainer" class="servers-container"></div>
       </div>
     </header>
     

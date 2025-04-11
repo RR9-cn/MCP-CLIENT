@@ -34,8 +34,22 @@ header h1 {
 
 .server-section {
   display: flex;
+  flex-direction: column;
+  width: 100%;
+}
+
+.controls {
+  display: flex;
   align-items: center;
   gap: 15px;
+  margin-bottom: 10px;
+}
+
+.servers-header {
+  font-size: 14px;
+  font-weight: bold;
+  margin-bottom: 5px;
+  color: #555;
 }
 
 #selectServer {
@@ -395,4 +409,114 @@ footer {
   border-left: 3px solid #ff4d4f;
   word-break: break-word;
   overflow-wrap: break-word;
+}
+
+/* 添加服务器列表样式 */
+.servers-container {
+  display: flex;
+  flex-direction: column;
+  margin-top: 10px;
+  max-height: 200px;
+  overflow-y: auto;
+  background-color: #fcfcfc;
+  border-radius: 6px;
+  border: 1px solid #e0e0e0;
+  width: 100%;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
+}
+
+.empty-servers {
+  padding: 10px;
+  text-align: center;
+  color: #666;
+  font-style: italic;
+}
+
+.server-item {
+  display: flex;
+  align-items: center;
+  padding: 10px 12px;
+  border-bottom: 1px solid #e0e0e0;
+  background-color: #fff;
+  transition: background-color 0.2s;
+}
+
+.server-item:last-child {
+  border-bottom: none;
+}
+
+.server-item.active {
+  background-color: #e3f2fd;
+  border-left: 3px solid #1a73e8;
+}
+
+.server-item:hover {
+  background-color: #f9f9f9;
+}
+
+.status-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  margin-right: 10px;
+  transition: all 0.2s ease;
+  box-shadow: 0 0 2px rgba(0, 0, 0, 0.2);
+}
+
+.status-dot.connected {
+  background-color: #4CAF50;
+  box-shadow: 0 0 5px rgba(76, 175, 80, 0.5);
+}
+
+.status-dot.disconnected {
+  background-color: #F44336;
+  box-shadow: 0 0 3px rgba(244, 67, 54, 0.5);
+}
+
+.server-name {
+  flex-grow: 1;
+  font-size: 14px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  color: #333;
+  font-weight: 500;
+}
+
+.server-actions {
+  display: flex;
+  gap: 5px;
+}
+
+.switch-server-btn, .remove-server-btn {
+  background: none;
+  border: 1px solid #ddd;
+  border-radius: 3px;
+  padding: 4px 8px;
+  font-size: 12px;
+  cursor: pointer;
+  transition: all 0.2s;
+  color: #555;
+}
+
+.switch-server-btn {
+  background-color: #f1f8ff;
+  border-color: #c8e1ff;
+}
+
+.remove-server-btn {
+  background-color: #fff8f7;
+  border-color: #ffd1cf;
+}
+
+.switch-server-btn:hover {
+  background-color: #4CAF50;
+  border-color: #4CAF50;
+  color: white;
+}
+
+.remove-server-btn:hover {
+  background-color: #F44336;
+  border-color: #F44336;
+  color: white;
 } 

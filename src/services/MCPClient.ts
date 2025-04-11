@@ -13,10 +13,49 @@ export class MCPClient {
   private tools: ToolDefinition[] = [];
   private isConnected: boolean = false;
 
-  constructor(aiService: DeepSeekAIService) {
+  // 添加服务器ID和名称属性
+  private id: string;
+  private serverName: string;
+  private serverPath: string = "";
+
+  constructor(
+    aiService: DeepSeekAIService,
+    id: string = "",
+    serverName: string = ""
+  ) {
     // 初始化MCP客户端和AI服务
     this.mcp = new Client({ name: "mcp-client-electron", version: "1.0.0" });
     this.aiService = aiService;
+    this.id = id || `mcp-${Date.now()}`;
+    this.serverName = serverName || "未命名服务器";
+  }
+
+  /**
+   * 获取客户端ID
+   */
+  public getId(): string {
+    return this.id;
+  }
+
+  /**
+   * 获取服务器名称
+   */
+  public getServerName(): string {
+    return this.serverName;
+  }
+
+  /**
+   * 设置服务器名称
+   */
+  public setServerName(name: string): void {
+    this.serverName = name;
+  }
+
+  /**
+   * 获取服务器路径
+   */
+  public getServerPath(): string {
+    return this.serverPath;
   }
 
   /**
@@ -79,6 +118,9 @@ export class MCPClient {
     try {
       // 规范化路径，处理Windows路径中的反斜杠
       const normalizedPath = serverScriptPath.replace(/\\/g, "/");
+
+      // 保存服务器路径
+      this.serverPath = serverScriptPath;
 
       console.log(`connect server ！！！！: ${normalizedPath}`);
 
