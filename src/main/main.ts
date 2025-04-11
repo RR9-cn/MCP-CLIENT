@@ -7,6 +7,20 @@ import * as dotenv from "dotenv";
 import { DeepSeekAIService } from "../services/DeepSeekAIService.js";
 import { MCPClient } from "../services/MCPClient.js";
 
+// 为了解决类型问题，定义文件附件接口
+interface FileAttachment {
+  path: string;
+  name: string;
+  type: string;
+}
+
+// 定义进度回调接口
+interface ProgressCallback {
+  onToolCall: (name: string, args: any) => void;
+  onToolResult: (name: string, result: any) => void;
+  onFinalResponse: (response: string) => void;
+}
+
 // 在ESM中创建__dirname的等效项
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -122,7 +136,7 @@ const initAIService = () => {
 };
 
 // 处理直接与AI对话
-ipcMain.handle("chat-with-ai", async (event, message) => {
+ipcMain.handle("chat-with-ai", async (event, message, files) => {
   try {
     if (!activeMcpClientId || !mcpClients.has(activeMcpClientId)) {
       console.log("AI服务未初始化，正在初始化...");
@@ -138,7 +152,28 @@ ipcMain.handle("chat-with-ai", async (event, message) => {
       return { success: false, message: "无法找到活动的MCP客户端" };
     }
 
-    const response = await activeMcpClient.chatWithAI(message);
+    // 处理文件附件
+    const fileAttachments: { path: string; name: string; type: string }[] = [];
+    if (files && Array.isArray(files) && files.length > 0) {
+      files.forEach((file) => {
+        if (
+          file &&
+          typeof file.path === "string" &&
+          typeof file.name === "string" &&
+          typeof file.type === "string"
+        ) {
+          fileAttachments.push({
+            path: file.path,
+            name: file.name,
+            type: file.type,
+          });
+        }
+      });
+      console.log("附件文件:", fileAttachments);
+    }
+
+    // 添加文件参数
+    const response = await activeMcpClient.chatWithAI(message, fileAttachments);
     return response;
   } catch (error: any) {
     console.error("AI对话失败:", error);
@@ -414,18 +449,38 @@ ipcMain.handle("set-agent-mode", (event, mode: boolean) => {
 });
 
 // 智能发送消息（根据当前模式自动选择）
-ipcMain.handle("smart-send-message", async (event, message) => {
+ipcMain.handle("smart-send-message", async (event, message, files) => {
   try {
     if (!activeMcpClientId || !mcpClients.has(activeMcpClientId)) {
-      return { success: false, message: "MCP客户端未初始化" };
+      return { success: false, message: "请先连接到MCP服务器" };
     }
 
-    const activeMcpClient = mcpClients.get(activeMcpClientId)!;
-    let response;
+    const activeMcpClient = mcpClients.get(activeMcpClientId!);
+    if (!activeMcpClient) {
+      return { success: false, message: "无法找到活动的MCP客户端" };
+    }
+
+    // 处理文件附件
+    const fileAttachments: { path: string; name: string; type: string }[] = [];
+    if (files && Array.isArray(files) && files.length > 0) {
+      files.forEach((file) => {
+        if (
+          file &&
+          typeof file.path === "string" &&
+          typeof file.name === "string" &&
+          typeof file.type === "string"
+        ) {
+          fileAttachments.push({
+            path: file.path,
+            name: file.name,
+            type: file.type,
+          });
+        }
+      });
+      console.log("附件文件:", fileAttachments);
+    }
 
     if (isAgentMode) {
-      console.log("使用Agent模式处理消息:", message);
-
       // 创建进度回调
       const progressCallback = {
         onToolCall: (name: string, args: any) => {
@@ -456,26 +511,19 @@ ipcMain.handle("smart-send-message", async (event, message) => {
         },
       };
 
-      response = await activeMcpClient.processQueryWithAgent(
+      // 使用sendMessageWithAgent方法，传递文件参数
+      return await activeMcpClient.sendMessageWithAgent(
         message,
+        fileAttachments,
         progressCallback
       );
     } else {
-      response = await activeMcpClient.processQuery(message);
+      // 使用sendMessage方法，传递文件参数
+      return await activeMcpClient.sendMessage(message, fileAttachments);
     }
-
-    return {
-      success: true,
-      message: response,
-      mode: isAgentMode ? "agent" : "normal",
-    };
   } catch (error: any) {
-    console.error("处理消息失败:", error);
-    return {
-      success: false,
-      message: `处理消息失败: ${error.message}`,
-      mode: isAgentMode ? "agent" : "normal",
-    };
+    console.error("发送消息失败:", error);
+    return { success: false, message: `发送消息失败: ${error.message}` };
   }
 });
 
@@ -589,3 +637,111 @@ function notifyServerListUpdate() {
     mainWindow.webContents.send("server-list-update", servers);
   }
 }
+
+// 处理文件选择
+ipcMain.handle("select-files", async (event, options) => {
+  try {
+    if (!mainWindow) {
+      return { success: false, message: "主窗口未初始化" };
+    }
+
+    const filters = [];
+    if (options && options.extensions) {
+      filters.push({
+        name: "文档",
+        extensions: options.extensions.map((ext: string) =>
+          ext.replace(".", "")
+        ),
+      });
+    } else {
+      filters.push(
+        { name: "PDF文档", extensions: ["pdf"] },
+        { name: "Word文档", extensions: ["doc", "docx"] },
+        { name: "文本文件", extensions: ["txt"] }
+      );
+    }
+
+    const result = await dialog.showOpenDialog(mainWindow, {
+      properties: ["openFile", "multiSelections"],
+      filters: filters,
+    });
+
+    if (result.canceled || result.filePaths.length === 0) {
+      return { success: false, canceled: true };
+    }
+
+    // 获取文件信息
+    const files = result.filePaths.map((filePath) => {
+      const stats = fs.statSync(filePath);
+      const fileExt = path.extname(filePath).toLowerCase();
+      const fileName = path.basename(filePath);
+
+      return {
+        path: filePath,
+        name: fileName,
+        size: stats.size,
+        type: fileExt,
+        lastModified: stats.mtime.getTime(),
+      };
+    });
+
+    return { success: true, files };
+  } catch (error: any) {
+    console.error("选择文件失败:", error);
+    return { success: false, message: `选择文件失败: ${error.message}` };
+  }
+});
+
+// 获取文件的临时可访问路径
+ipcMain.handle("get-temp-file-path", (event, filePath) => {
+  try {
+    if (!fs.existsSync(filePath)) {
+      return { success: false, message: "文件不存在" };
+    }
+
+    // 创建临时目录（如果不存在）
+    const tempDir = path.join(app.getPath("temp"), "mcp-client-uploads");
+    if (!fs.existsSync(tempDir)) {
+      fs.mkdirSync(tempDir, { recursive: true });
+    }
+
+    const fileName = path.basename(filePath);
+    const tempFilePath = path.join(tempDir, fileName);
+
+    // 复制文件到临时目录
+    fs.copyFileSync(filePath, tempFilePath);
+
+    return { success: true, path: tempFilePath };
+  } catch (error: any) {
+    console.error("获取临时文件路径失败:", error);
+    return {
+      success: false,
+      message: `获取临时文件路径失败: ${error.message}`,
+    };
+  }
+});
+
+// 保存上传的文件
+ipcMain.handle("save-uploaded-file", (event, filePath, targetDir) => {
+  try {
+    if (!fs.existsSync(filePath)) {
+      return { success: false, message: "源文件不存在" };
+    }
+
+    // 创建目标目录（如果不存在）
+    if (!fs.existsSync(targetDir)) {
+      fs.mkdirSync(targetDir, { recursive: true });
+    }
+
+    const fileName = path.basename(filePath);
+    const targetPath = path.join(targetDir, fileName);
+
+    // 复制文件到目标目录
+    fs.copyFileSync(filePath, targetPath);
+
+    return { success: true, path: targetPath };
+  } catch (error: any) {
+    console.error("保存上传文件失败:", error);
+    return { success: false, message: `保存上传文件失败: ${error.message}` };
+  }
+});

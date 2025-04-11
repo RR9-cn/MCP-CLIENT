@@ -48,18 +48,39 @@ contextBridge.exposeInMainWorld("mcpAPI", {
   },
 
   // 智能发送消息（根据当前模式自动选择）
-  smartSendMessage: (message: string) => {
-    return ipcRenderer.invoke("smart-send-message", message);
+  smartSendMessage: (
+    message: string,
+    files?: Array<{ path: string; name: string; type: string }>
+  ) => {
+    return ipcRenderer.invoke("smart-send-message", message, files);
   },
 
   // 直接与AI对话（不使用MCP工具）
-  chatWithAI: (message: string) => {
-    return ipcRenderer.invoke("chat-with-ai", message);
+  chatWithAI: (
+    message: string,
+    files?: Array<{ path: string; name: string; type: string }>
+  ) => {
+    return ipcRenderer.invoke("chat-with-ai", message, files);
   },
 
   // 选择服务器脚本文件
   selectServerScript: () => {
     return ipcRenderer.invoke("select-server-script");
+  },
+
+  // 选择文件上传
+  selectFiles: (options?: { extensions: string[] }) => {
+    return ipcRenderer.invoke("select-files", options);
+  },
+
+  // 获取文件临时路径
+  getTempFilePath: (filePath: string) => {
+    return ipcRenderer.invoke("get-temp-file-path", filePath);
+  },
+
+  // 保存上传的文件
+  saveUploadedFile: (filePath: string, targetDir: string) => {
+    return ipcRenderer.invoke("save-uploaded-file", filePath, targetDir);
   },
 
   // 监听事件

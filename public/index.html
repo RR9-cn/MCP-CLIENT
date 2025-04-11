@@ -32,14 +32,24 @@
         <div class="messages" id="messages">
           <div class="welcome-message">
             <h2>欢迎使用MCP Client</h2>
-            <p>您可以通过以下两种方式使用本应用：</p>
+            <p>您可以通过以下方式使用本应用：</p>
             <p>1. <b>直接对话模式</b>：等待AI服务初始化完成后直接开始对话</p>
             <p>2. <b>工具增强模式</b>：选择并连接服务器脚本（.js 或 .py）使用MCP工具能力</p>
             <p>3. <b>Agent模式</b>：开启右上角的Agent开关，AI将自动执行多轮工具调用</p>
+            <p>4. <b>文件上传</b>：点击左下角回形针图标上传PDF、Word或TXT文件让AI分析内容</p>
           </div>
         </div>
         
         <div class="input-area">
+          <div class="attachment-container">
+            <button id="attachmentBtn" title="上传附件">
+              <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"></path>
+              </svg>
+            </button>
+            <div id="attachmentList" class="attachment-list"></div>
+            <input type="file" id="fileInput" accept=".pdf,.doc,.docx,.txt" style="display: none;" multiple>
+          </div>
           <textarea id="messageInput" placeholder="等待AI服务初始化..." disabled></textarea>
           <button id="sendBtn" disabled>发送</button>
         </div>

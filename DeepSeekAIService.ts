@@ -153,4 +153,22 @@ export class DeepSeekAIService {
 
     return toolMessage;
   }
+
+  /**
+   * 直接与AI聊天，无需工具调用
+   */
+  async chat(message: string): Promise<string> {
+    const userMessage: Message = {
+      role: "user",
+      content: message,
+    };
+
+    try {
+      const response = await this.sendMessage([userMessage], [], 2000);
+      return response.content || "AI没有返回任何内容";
+    } catch (error: any) {
+      console.error("AI聊天失败:", error);
+      throw new Error(`AI聊天失败: ${error.message || "未知错误"}`);
+    }
+  }
 }

@@ -5,6 +5,15 @@ import {
   Message,
   ToolDefinition,
 } from "./DeepSeekAIService.js";
+import path from "path";
+import fs from "fs";
+
+// 定义文件附件接口
+interface FileAttachment {
+  path: string;
+  name: string;
+  type: string;
+}
 
 export class MCPClient {
   private mcp: Client;
@@ -75,17 +84,25 @@ export class MCPClient {
   /**
    * 直接与AI进行对话，不经过MCP工具
    * @param query - 用户的问题
+   * @param files - 可选的文件附件
    * @returns 处理后的AI回复
    */
-  async chatWithAI(query: string) {
-    let messages: Message[] = [
-      {
-        role: "user",
-        content: query,
-      },
-    ];
-
+  async chatWithAI(query: string, files: FileAttachment[] = []) {
     try {
+      // 处理文件内容
+      let userMessage = query;
+      if (files && files.length > 0) {
+        const fileContext = await this.processFileAttachments(files);
+        userMessage += fileContext;
+      }
+
+      let messages: Message[] = [
+        {
+          role: "user",
+          content: userMessage,
+        },
+      ];
+
       // 发送消息到AI服务
       const assistantMessage = await this.aiService.sendMessage(messages);
 
@@ -125,7 +142,6 @@ export class MCPClient {
       console.log(`connect server ！！！！: ${normalizedPath}`);
 
       // 检查文件是否存在
-      const fs = await import("fs");
       if (!fs.existsSync(serverScriptPath)) {
         throw new Error(`服务器脚本文件不存在: ${serverScriptPath}`);
       }
@@ -200,6 +216,7 @@ export class MCPClient {
    * 使用Agent模式处理查询
    * @param query 用户查询
    * @param progressCallback 可选的工具调用进度回调，用于实时显示过程
+   * @param files 可选的文件附件
    * @returns 处理后的结果
    */
   async processQueryWithAgent(
@@ -208,7 +225,8 @@ export class MCPClient {
       onToolCall?: (name: string, args: any) => void;
       onToolResult?: (name: string, result: any) => void;
       onFinalResponse?: (response: string) => void;
-    }
+    },
+    files: FileAttachment[] = []
   ) {
     if (!this.isConnected) {
       return "请先连接到MCP服务器";
@@ -217,12 +235,20 @@ export class MCPClient {
     try {
       console.log("使用Agent模式处理查询:", query);
 
+      // 处理文件内容
+      let userMessage = query;
+      if (files && files.length > 0) {
+        const fileContext = await this.processFileAttachments(files);
+        userMessage += fileContext;
+        console.log("添加文件上下文:", fileContext);
+      }
+
       // 存储工具调用过程的日志
       const toolCallLogs: string[] = [];
 
       // 使用AI服务的Agent循环处理查询
       const result = await this.aiService.runAgentLoop(
-        query,
+        userMessage,
         this.tools,
         async (name, args) => {
           console.log(`Agent调用工具: ${name}，参数:`, args);
@@ -301,22 +327,30 @@ export class MCPClient {
     }
   }
 
-  async processQuery(query: string) {
+  async processQuery(query: string, files: FileAttachment[] = []) {
     /**
      * Process a query using DeepSeek and available tools
      *
      * @param query - The user's input query
+     * @param files - Optional file attachments
      * @returns Processed response as a string
      */
-    // 创建DeepSeek API请求
-    let messages: Message[] = [
-      {
-        role: "user",
-        content: query,
-      },
-    ];
-
     try {
+      // 处理文件内容
+      let userMessage = query;
+      if (files && files.length > 0) {
+        const fileContext = await this.processFileAttachments(files);
+        userMessage += fileContext;
+      }
+
+      // 创建DeepSeek API请求
+      let messages: Message[] = [
+        {
+          role: "user",
+          content: userMessage,
+        },
+      ];
+
       // 初始AI调用
       const finalText = [];
       const assistantMessage = await this.aiService.sendMessage(
@@ -375,6 +409,113 @@ export class MCPClient {
     if (this.isConnected) {
       await this.mcp.close();
       this.isConnected = false;
+    }
+  }
+
+  // 处理文件附件
+  private async processFileAttachments(
+    files: FileAttachment[]
+  ): Promise<string> {
+    if (!files || files.length === 0) return "";
+
+    const fileDescriptions = files.map((file) => {
+      const fileExt = path.extname(file.path).toLowerCase();
+      const fileType =
+        fileExt === ".pdf"
+          ? "PDF文档"
+          : fileExt === ".doc" || fileExt === ".docx"
+          ? "Word文档"
+          : fileExt === ".txt"
+          ? "文本文件"
+          : "未知类型文件";
+      const stats = fs.statSync(file.path);
+      const fileSizeInKB = Math.round(stats.size / 1024);
+
+      return `- ${file.name} (${fileType}, ${fileSizeInKB}KB)`;
+    });
+
+    // 对于TXT文件，尝试读取内容
+    let textContent = "";
+    for (const file of files) {
+      const fileExt = path.extname(file.path).toLowerCase();
+      if (fileExt === ".txt") {
+        try {
+          // 读取前10000个字符作为预览
+          const content = fs.readFileSync(file.path, "utf-8").slice(0, 10000);
+          if (content.trim()) {
+            textContent += `\n\n文件 ${file.name} 的内容预览:\n${content}${
+              content.length >= 10000 ? "...(内容已截断)" : ""
+            }`;
+          }
+        } catch (error) {
+          console.error(`读取文本文件失败: ${file.path}`, error);
+        }
+      }
+    }
+
+    return `\n\n用户上传了以下文件：\n${fileDescriptions.join(
+      "\n"
+    )}${textContent}\n请分析这些文件内容。`;
+  }
+
+  /**
+   * 包装方法，用于普通模式发送消息
+   * @param message 用户消息
+   * @param files 可选的文件附件
+   * @returns 处理结果
+   */
+  async sendMessage(message: string, files: FileAttachment[] = []) {
+    try {
+      const response = await this.processQuery(message, files);
+      return {
+        success: true,
+        message: response,
+        mode: "normal",
+      };
+    } catch (error: any) {
+      console.error("处理消息失败:", error);
+      return {
+        success: false,
+        message: `处理消息失败: ${error.message}`,
+        mode: "normal",
+      };
+    }
+  }
+
+  /**
+   * 包装方法，用于Agent模式发送消息
+   * @param message 用户消息
+   * @param files 可选的文件附件
+   * @param progressCallback 可选的进度回调
+   * @returns 处理结果
+   */
+  async sendMessageWithAgent(
+    message: string,
+    files: FileAttachment[] = [],
+    progressCallback?: {
+      onToolCall?: (name: string, args: any) => void;
+      onToolResult?: (name: string, result: any) => void;
+      onFinalResponse?: (response: string) => void;
+    }
+  ) {
+    try {
+      const response = await this.processQueryWithAgent(
+        message,
+        progressCallback,
+        files
+      );
+      return {
+        success: true,
+        message: response,
+        mode: "agent",
+      };
+    } catch (error: any) {
+      console.error("Agent处理消息失败:", error);
+      return {
+        success: false,
+        message: `Agent处理消息失败: ${error.message}`,
+        mode: "agent",
+      };
     }
   }
 }

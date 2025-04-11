@@ -7,6 +7,9 @@ const sendBtn = document.getElementById('sendBtn');
 const agentModeSwitch = document.getElementById('agentModeSwitch');
 const modeIndicator = document.getElementById('modeIndicator');
 const serversContainer = document.getElementById('serversContainer') || document.createElement('div');
+const attachmentBtn = document.getElementById('attachmentBtn');
+const attachmentList = document.getElementById('attachmentList');
+const fileInput = document.getElementById('fileInput');
 
 // 如果页面上还没有serversContainer元素，创建并添加它
 if (!document.getElementById('serversContainer')) {
@@ -23,6 +26,8 @@ let isAgentMode = false;
 let currentMessageId = null;
 // 当前活动的服务器ID
 let activeServerId = null;
+// 文件上传列表
+let uploadedFiles = [];
 
 // 为UI元素添加事件监听器
 selectServerBtn.addEventListener('click', selectServerScript);
@@ -35,6 +40,132 @@ messageInput.addEventListener('keypress', (e) => {
 });
 if (agentModeSwitch) {
   agentModeSwitch.addEventListener('change', toggleAgentMode);
+}
+
+// 添加文件上传事件监听
+if (attachmentBtn) {
+  attachmentBtn.addEventListener('click', () => {
+    fileInput.click();
+  });
+}
+
+// 文件选择变更处理
+if (fileInput) {
+  fileInput.addEventListener('click', (e) => {
+    // 阻止默认的文件选择行为
+    e.preventDefault();
+    // 直接调用 selectFiles
+    window.mcpAPI.selectFiles().then(result => {
+      if (result.success && result.files && result.files.length > 0) {
+        // 添加到上传文件列表
+        uploadedFiles = result.files;
+        // 更新UI显示
+        updateAttachmentList();
+      }
+    }).catch(error => {
+      console.error('选择文件失败:', error);
+      addMessage(`选择文件失败: ${error.message || '未知错误'}`, 'error');
+    });
+  });
+}
+
+// 更新附件列表UI
+function updateAttachmentList() {
+  if (!attachmentList) return;
+  
+  attachmentList.innerHTML = '';
+  
+  if (uploadedFiles.length === 0) return;
+  
+  uploadedFiles.forEach((file, index) => {
+    const fileItem = document.createElement('div');
+    fileItem.className = `attachment-item ${getFileTypeClass(file.type)}`;
+    
+    const fileName = document.createElement('span');
+    fileName.className = 'file-name';
+    fileName.textContent = file.name;
+    
+    const removeBtn = document.createElement('button');
+    removeBtn.className = 'remove-btn';
+    removeBtn.textContent = '×';
+    removeBtn.addEventListener('click', () => removeFile(index));
+    
+    fileItem.appendChild(fileName);
+    fileItem.appendChild(removeBtn);
+    attachmentList.appendChild(fileItem);
+  });
+}
+
+// 获取文件类型样式类
+function getFileTypeClass(fileType) {
+  const type = fileType.toLowerCase();
+  if (type === '.pdf') return 'pdf';
+  if (type === '.doc' || type === '.docx') return 'doc';
+  if (type === '.txt') return 'txt';
+  return '';
+}
+
+// 移除上传文件
+function removeFile(index) {
+  uploadedFiles.splice(index, 1);
+  updateAttachmentList();
+}
+
+// 添加文件附件消息
+function addFileAttachment(file) {
+  const fileItem = document.createElement('div');
+  fileItem.className = 'attachment-message';
+  
+  const fileInfo = document.createElement('div');
+  fileInfo.className = 'file-info';
+  
+  const fileIcon = document.createElement('div');
+  fileIcon.className = 'file-icon';
+  
+  // 设置图标（可以用SVG或图片）
+  if (file.type.toLowerCase() === '.pdf') {
+    fileIcon.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="red" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><path d="M9 15h6"></path><path d="M9 11h6"></path></svg>`;
+  } else if (file.type.toLowerCase() === '.doc' || file.type.toLowerCase() === '.docx') {
+    fileIcon.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="blue" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line><polyline points="10 9 9 9 8 9"></polyline></svg>`;
+  } else if (file.type.toLowerCase() === '.txt') {
+    fileIcon.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="green" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line></svg>`;
+  } else {
+    fileIcon.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline></svg>`;
+  }
+  
+  const fileName = document.createElement('span');
+  fileName.className = 'file-name';
+  fileName.textContent = file.name;
+  
+  const fileSize = document.createElement('span');
+  fileSize.className = 'file-size';
+  fileSize.textContent = formatFileSize(file.size);
+  
+  fileInfo.appendChild(fileIcon);
+  fileInfo.appendChild(fileName);
+  fileInfo.appendChild(fileSize);
+  
+  fileItem.appendChild(fileInfo);
+  
+  // 可选：添加下载链接
+  // const downloadLink = document.createElement('a');
+  // downloadLink.className = 'download-link';
+  // downloadLink.href = '#';
+  // downloadLink.textContent = '查看文件';
+  // downloadLink.addEventListener('click', (e) => {
+  //   e.preventDefault();
+  //   // 处理文件查看/下载
+  // });
+  // fileItem.appendChild(downloadLink);
+  
+  return fileItem;
+}
+
+// 格式化文件大小
+function formatFileSize(bytes) {
+  if (bytes < 1024) return bytes + ' B';
+  if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
+  return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
 }
 
 // 监听AI服务就绪
@@ -294,6 +425,18 @@ async function sendMessage() {
   // 在UI中添加用户消息
   addMessageToSession(sessionContainer, message, 'user');
   
+  // 如果有文件附件，添加到会话中
+  if (uploadedFiles.length > 0) {
+    const filesContainer = document.createElement('div');
+    filesContainer.className = 'user-files';
+    
+    uploadedFiles.forEach(file => {
+      filesContainer.appendChild(addFileAttachment(file));
+    });
+    
+    sessionContainer.appendChild(filesContainer);
+  }
+  
   try {
     let response;
     
@@ -312,7 +455,8 @@ async function sendMessage() {
         progressContainer.appendChild(waitingDiv);
       }
       
-      response = await window.mcpAPI.smartSendMessage(message);
+      // 添加文件附件参数
+      response = await window.mcpAPI.smartSendMessage(message, uploadedFiles);
       
       // 处理响应
       if (response.success) {
@@ -326,7 +470,7 @@ async function sendMessage() {
       }
     } else if (isAIReady) {
       // 直接与AI对话
-      response = await window.mcpAPI.chatWithAI(message);
+      response = await window.mcpAPI.chatWithAI(message, uploadedFiles);
       
       if (response.success) {
         addMessageToSession(sessionContainer, response.message || '收到空回复', 'ai');
@@ -347,6 +491,9 @@ async function sendMessage() {
     scrollToBottom();
     // 清除当前消息ID
     currentMessageId = null;
+    // 清空文件上传列表
+    uploadedFiles = [];
+    updateAttachmentList();
   }
 }
 
