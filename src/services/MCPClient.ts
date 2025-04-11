@@ -157,9 +157,17 @@ export class MCPClient {
   /**
    * 使用Agent模式处理查询
    * @param query 用户查询
+   * @param progressCallback 可选的工具调用进度回调，用于实时显示过程
    * @returns 处理后的结果
    */
-  async processQueryWithAgent(query: string) {
+  async processQueryWithAgent(
+    query: string,
+    progressCallback?: {
+      onToolCall?: (name: string, args: any) => void;
+      onToolResult?: (name: string, result: any) => void;
+      onFinalResponse?: (response: string) => void;
+    }
+  ) {
     if (!this.isConnected) {
       return "请先连接到MCP服务器";
     }
@@ -178,9 +186,15 @@ export class MCPClient {
           console.log(`Agent调用工具: ${name}，参数:`, args);
 
           // 记录工具调用信息
-          toolCallLogs.push(
-            `[使用工具: ${name}] 参数: ${JSON.stringify(args)}`
-          );
+          const toolCallLog = `[使用工具: ${name}] 参数: ${JSON.stringify(
+            args
+          )}`;
+          toolCallLogs.push(toolCallLog);
+
+          // 通知进度回调
+          if (progressCallback?.onToolCall) {
+            progressCallback.onToolCall(name, args);
+          }
 
           // 执行MCP工具调用
           try {
@@ -192,20 +206,32 @@ export class MCPClient {
             console.log(`工具执行结果:`, toolResult);
 
             // 记录工具调用结果
-            toolCallLogs.push(
-              `[工具结果] ${
-                typeof toolResult === "string"
-                  ? toolResult
-                  : JSON.stringify(toolResult)
-              }`
-            );
+            const resultLog = `[工具结果] ${
+              typeof toolResult === "string"
+                ? toolResult
+                : JSON.stringify(toolResult)
+            }`;
+            toolCallLogs.push(resultLog);
+
+            // 通知结果回调
+            if (progressCallback?.onToolResult) {
+              progressCallback.onToolResult(name, toolResult);
+            }
 
             return toolResult;
           } catch (error: any) {
             console.error(`工具${name}执行失败:`, error);
 
             // 记录工具调用失败
-            toolCallLogs.push(`[工具执行失败] ${error.message || "未知错误"}`);
+            const errorLog = `[工具执行失败] ${error.message || "未知错误"}`;
+            toolCallLogs.push(errorLog);
+
+            // 通知结果回调（失败情况）
+            if (progressCallback?.onToolResult) {
+              progressCallback.onToolResult(name, {
+                error: error.message || "未知错误",
+              });
+            }
 
             throw error;
           }
@@ -213,11 +239,23 @@ export class MCPClient {
         5 // 最多5轮迭代
       );
 
+      // 通知最终结果回调
+      if (progressCallback?.onFinalResponse) {
+        progressCallback.onFinalResponse(result);
+      }
+
       // 将工具调用日志和最终结果组合返回
       return toolCallLogs.join("\n") + "\n\n" + result;
     } catch (error: any) {
       console.error("Agent处理查询失败:", error);
-      return `处理查询时出错: ${error.message || "未知错误"}`;
+      const errorMessage = `处理查询时出错: ${error.message || "未知错误"}`;
+
+      // 通知最终结果回调（出错情况）
+      if (progressCallback?.onFinalResponse) {
+        progressCallback.onFinalResponse(errorMessage);
+      }
+
+      return errorMessage;
     }
   }
 

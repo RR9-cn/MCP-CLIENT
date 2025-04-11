@@ -313,4 +313,86 @@ footer {
 
 ::-webkit-scrollbar-thumb:hover {
   background: #999;
+}
+
+/* 会话容器 */
+.message-session {
+  display: flex;
+  flex-direction: column;
+  margin-bottom: 20px;
+  border-left: 3px solid #ddd;
+  padding-left: 10px;
+}
+
+/* 工具调用容器 */
+.tool-calls-container {
+  display: flex;
+  flex-direction: column;
+  margin: 5px 0;
+  padding: 8px;
+  background-color: #f8f9fa;
+  border-radius: 5px;
+  border-left: 3px solid #007bff;
+}
+
+/* 工具处理中提示 */
+.tool-processing {
+  font-style: italic;
+  color: #6c757d;
+  margin-bottom: 5px;
+}
+
+/* 工具调用 - 默认样式 */
+.tool-call {
+  padding: 6px 10px;
+  margin: 3px 0;
+  border-radius: 4px;
+  font-family: monospace;
+  font-size: 0.9em;
+  background-color: #f1f1f1;
+  color: #333;
+  word-break: break-word;
+  overflow-wrap: break-word;
+}
+
+/* 工具调用 - 正在运行 */
+.tool-call-running {
+  padding: 6px 10px;
+  margin: 3px 0;
+  border-radius: 4px;
+  font-family: monospace;
+  font-size: 0.9em;
+  background-color: #e6f7ff;
+  color: #0066cc;
+  border-left: 3px solid #1890ff;
+  word-break: break-word;
+  overflow-wrap: break-word;
+}
+
+/* 工具调用 - 成功 */
+.tool-call-success {
+  padding: 6px 10px;
+  margin: 3px 0;
+  border-radius: 4px;
+  font-family: monospace;
+  font-size: 0.9em;
+  background-color: #f6ffed;
+  color: #52c41a;
+  border-left: 3px solid #52c41a;
+  word-break: break-word;
+  overflow-wrap: break-word;
+}
+
+/* 工具调用 - 错误 */
+.tool-call-error {
+  padding: 6px 10px;
+  margin: 3px 0;
+  border-radius: 4px;
+  font-family: monospace;
+  font-size: 0.9em;
+  background-color: #fff2f0;
+  color: #ff4d4f;
+  border-left: 3px solid #ff4d4f;
+  word-break: break-word;
+  overflow-wrap: break-word;
 } 

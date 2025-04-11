@@ -11,6 +11,8 @@ const modeIndicator = document.getElementById('modeIndicator');
 let isConnected = false;
 let isAIReady = false;
 let isAgentMode = false;
+// 当前处理中的消息ID，用于关联工具调用
+let currentMessageId = null;
 
 // 为UI元素添加事件监听器
 selectServerBtn.addEventListener('click', selectServerScript);
@@ -32,6 +34,36 @@ window.mcpAPI.onAIServiceReady(() => {
   updateStatus('AI已就绪，MCP未连接', false, true);
   
   initAgentModeState();
+});
+
+// 监听工具调用更新
+window.mcpAPI.onToolCallUpdate((data) => {
+  console.log('收到工具调用:', data);
+  // 显示工具调用信息
+  addToolCall(`[使用工具: ${data.name}] 参数: ${JSON.stringify(data.args)}`, 'tool-call-running');
+});
+
+// 监听工具调用结果
+window.mcpAPI.onToolResultUpdate((data) => {
+  console.log('收到工具结果:', data);
+  // 判断结果类型
+  if (data.result && data.result.error) {
+    // 显示错误信息
+    addToolCall(`[工具调用失败: ${data.name}] ${data.result.error}`, 'tool-call-error');
+  } else {
+    // 显示成功结果
+    const resultStr = typeof data.result === 'string' 
+      ? data.result 
+      : JSON.stringify(data.result);
+    addToolCall(`[工具结果: ${data.name}] ${resultStr}`, 'tool-call-success');
+  }
+});
+
+// 监听Agent最终回复
+window.mcpAPI.onAgentFinalResponse((data) => {
+  console.log('收到最终回复:', data);
+  // 添加AI最终回复
+  addMessage(data.response, 'ai');
 });
 
 async function initAgentModeState() {
@@ -125,75 +157,97 @@ async function sendMessage() {
   const message = messageInput.value.trim();
   if (!message || !(isConnected || isAIReady)) return;
   
+  // 生成一个消息 ID 用于跟踪当前会话
+  currentMessageId = Date.now();
+  
   // 清空输入框并禁用按钮
   messageInput.value = '';
   disableInput(true);
   
+  // 创建消息会话容器
+  const sessionContainer = document.createElement('div');
+  sessionContainer.className = 'message-session';
+  sessionContainer.dataset.messageId = currentMessageId;
+  messagesContainer.appendChild(sessionContainer);
+  
   // 在UI中添加用户消息
-  addMessage(message, 'user');
+  addMessageToSession(sessionContainer, message, 'user');
   
   try {
     let response;
     
     // 根据连接状态选择使用MCP还是直接AI对话
     if (isConnected) {
+      // 在Agent模式下，创建进度显示区域
+      if (isAgentMode) {
+        const progressContainer = document.createElement('div');
+        progressContainer.className = 'tool-calls-container';
+        sessionContainer.appendChild(progressContainer);
+        
+        // 添加等待提示
+        const waitingDiv = document.createElement('div');
+        waitingDiv.className = 'tool-processing';
+        waitingDiv.textContent = `${isAgentMode ? '[Agent模式]' : '[普通模式]'} 处理中...`;
+        progressContainer.appendChild(waitingDiv);
+      }
+      
       response = await window.mcpAPI.smartSendMessage(message);
       
       // 处理响应
       if (response.success) {
-        const modeTag = response.mode === 'agent' ? '[Agent模式]' : '[普通模式]';
-        addMessage(`${modeTag} 处理中...`, 'system');
-        
-        // 解析响应，分离工具调用和AI回复
-        const parts = String(response.message).split('\n');
-        let currentText = '';
-        
-        for (const part of parts) {
-          if (part.startsWith('[调用工具') || part.startsWith('[使用工具') || part.startsWith('[工具结果]')) {
-            // 如果有累积的文本，先添加为AI消息
-            if (currentText) {
-              addMessage(currentText, 'ai');
-              currentText = '';
-            }
-            // 添加工具调用信息
-            addToolCall(part);
-          } else {
-            // 累积普通文本
-            currentText += (currentText ? '\n' : '') + part;
-          }
+        // 在非Agent模式下，直接显示AI回复
+        if (response.mode !== 'agent') {
+          addMessageToSession(sessionContainer, response.message, 'ai');
         }
-        
-        // 添加剩余的文本作为AI回复
-        if (currentText) {
-          addMessage(currentText, 'ai');
-        }
+        // Agent模式下，实时回调会处理显示
       } else {
-        addMessage(`处理失败：${response.message}`, 'error');
+        addMessageToSession(sessionContainer, `处理失败：${response.message}`, 'error');
       }
     } else if (isAIReady) {
       // 直接与AI对话
       response = await window.mcpAPI.chatWithAI(message);
       
       if (response.success) {
-        addMessage(response.message, 'ai');
+        addMessageToSession(sessionContainer, response.message, 'ai');
       } else {
-        addMessage(`AI回复失败：${response.message}`, 'error');
+        addMessageToSession(sessionContainer, `AI回复失败：${response.message}`, 'error');
       }
     } else {
-      addMessage('请先等待AI服务就绪或连接到MCP服务器', 'error');
+      addMessageToSession(sessionContainer, '请先等待AI服务就绪或连接到MCP服务器', 'error');
     }
   } catch (error) {
-    addMessage(`错误：${error.message}`, 'error');
+    // 获取当前会话容器
+    const currentSession = document.querySelector(`.message-session[data-message-id="${currentMessageId}"]`);
+    addMessageToSession(currentSession, `错误：${error.message}`, 'error');
   } finally {
     // 重新启用输入
     disableInput(false);
     // 滚动到底部
     scrollToBottom();
+    // 清除当前消息ID
+    currentMessageId = null;
   }
+}
+
+// 添加消息到会话容器
+function addMessageToSession(sessionContainer, text, type) {
+  const messageDiv = document.createElement('div');
+  messageDiv.className = `message ${type}-message`;
+  messageDiv.textContent = text;
+  sessionContainer.appendChild(messageDiv);
+  scrollToBottom();
 }
 
 // 添加消息到聊天容器
 function addMessage(text, type) {
+  // 如果有当前会话容器，添加到会话中
+  const currentSession = document.querySelector(`.message-session[data-message-id="${currentMessageId}"]`);
+  if (currentSession) {
+    addMessageToSession(currentSession, text, type);
+    return;
+  }
+  
+  // 否则创建一个新的非会话消息
   const messageDiv = document.createElement('div');
   messageDiv.className = `message ${type}-message`;
   messageDiv.textContent = text;
@@ -202,11 +256,31 @@ function addMessage(text, type) {
 }
 
 // 添加工具调用信息
-function addToolCall(text) {
-  const toolCallDiv = document.createElement('div');
-  toolCallDiv.className = 'tool-call';
-  toolCallDiv.textContent = text;
-  messagesContainer.appendChild(toolCallDiv);
+function addToolCall(text, className = 'tool-call') {
+  // 查找当前会话的工具调用容器
+  const currentSession = document.querySelector(`.message-session[data-message-id="${currentMessageId}"]`);
+  if (!currentSession) {
+    // 如果没有当前会话，创建一个普通工具调用消息
+    const toolCallDiv = document.createElement('div');
+    toolCallDiv.className = className;
+    toolCallDiv.textContent = text;
+    messagesContainer.appendChild(toolCallDiv);
+  } else {
+    // 查找或创建工具调用容器
+    let toolCallsContainer = currentSession.querySelector('.tool-calls-container');
+    if (!toolCallsContainer) {
+      toolCallsContainer = document.createElement('div');
+      toolCallsContainer.className = 'tool-calls-container';
+      currentSession.appendChild(toolCallsContainer);
+    }
+    
+    // 添加工具调用信息
+    const toolCallDiv = document.createElement('div');
+    toolCallDiv.className = className;
+    toolCallDiv.textContent = text;
+    toolCallsContainer.appendChild(toolCallDiv);
+  }
+  
   scrollToBottom();
 }
 

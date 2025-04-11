@@ -46,4 +46,25 @@ contextBridge.exposeInMainWorld("mcpAPI", {
   onAIServiceReady: (callback: () => void) => {
     ipcRenderer.on("ai-service-ready", callback);
   },
+
+  // 监听工具调用过程更新
+  onToolCallUpdate: (callback: (data: unknown) => void) => {
+    ipcRenderer.on("tool-call-update", (_event: any, data: unknown) =>
+      callback(data)
+    );
+  },
+
+  // 监听工具调用结果更新
+  onToolResultUpdate: (callback: (data: unknown) => void) => {
+    ipcRenderer.on("tool-result-update", (_event: any, data: unknown) =>
+      callback(data)
+    );
+  },
+
+  // 监听Agent最终回复
+  onAgentFinalResponse: (callback: (data: unknown) => void) => {
+    ipcRenderer.on("agent-final-response", (_event: any, data: unknown) =>
+      callback(data)
+    );
+  },
 });

@@ -185,7 +185,44 @@ ipcMain.handle("send-message-with-agent", async (event, message) => {
     }
 
     console.log("使用Agent模式处理消息:", message);
-    const response = await mcpClient.processQueryWithAgent(message);
+
+    // 创建进度回调
+    const progressCallback = {
+      onToolCall: (name: string, args: any) => {
+        // 发送工具调用更新通知
+        if (mainWindow) {
+          mainWindow.webContents.send("tool-call-update", {
+            name,
+            args,
+            timestamp: Date.now(),
+          });
+        }
+      },
+      onToolResult: (name: string, result: any) => {
+        // 发送工具结果更新通知
+        if (mainWindow) {
+          mainWindow.webContents.send("tool-result-update", {
+            name,
+            result,
+            timestamp: Date.now(),
+          });
+        }
+      },
+      onFinalResponse: (response: string) => {
+        // 发送最终回复通知
+        if (mainWindow) {
+          mainWindow.webContents.send("agent-final-response", {
+            response,
+            timestamp: Date.now(),
+          });
+        }
+      },
+    };
+
+    const response = await mcpClient.processQueryWithAgent(
+      message,
+      progressCallback
+    );
     return { success: true, message: response, mode: "agent" };
   } catch (error: any) {
     console.error("处理Agent消息失败:", error);
@@ -219,9 +256,48 @@ ipcMain.handle("smart-send-message", async (event, message) => {
     console.log(`使用${isAgentMode ? "Agent" : "普通"}模式处理消息:`, message);
 
     // 根据当前模式选择处理方法
-    const response = isAgentMode
-      ? await mcpClient.processQueryWithAgent(message)
-      : await mcpClient.processQuery(message);
+    let response;
+    if (isAgentMode) {
+      // 创建进度回调
+      const progressCallback = {
+        onToolCall: (name: string, args: any) => {
+          // 发送工具调用更新通知
+          if (mainWindow) {
+            mainWindow.webContents.send("tool-call-update", {
+              name,
+              args,
+              timestamp: Date.now(),
+            });
+          }
+        },
+        onToolResult: (name: string, result: any) => {
+          // 发送工具结果更新通知
+          if (mainWindow) {
+            mainWindow.webContents.send("tool-result-update", {
+              name,
+              result,
+              timestamp: Date.now(),
+            });
+          }
+        },
+        onFinalResponse: (response: string) => {
+          // 发送最终回复通知
+          if (mainWindow) {
+            mainWindow.webContents.send("agent-final-response", {
+              response,
+              timestamp: Date.now(),
+            });
+          }
+        },
+      };
+
+      response = await mcpClient.processQueryWithAgent(
+        message,
+        progressCallback
+      );
+    } else {
+      response = await mcpClient.processQuery(message);
+    }
 
     return {
       success: true,
